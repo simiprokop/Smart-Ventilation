@@ -1,0 +1,108 @@
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
+#include <Wire.h>
+
+const char MAIN_page[] PROGMEM = R"=====(
+<!DOCTYPE html>
+<html>
+  <head>
+    <style> 
+    </style>
+  </head>
+  <body>
+            <span id="readChannel_0">Wait</span>
+    <script>
+      setInterval(function() {
+        getChannel_0_Val();
+      }, 1000); 
+      function getChannel_0_Val() {
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function() {
+          if (this.readyState == 4 && this.status == 200) {
+            document.getElementById("readChannel_0").innerHTML = this.responseText;;
+          }
+        };
+        xhttp.open("GET", "readChannel_0", true);
+        xhttp.send();
+      }
+    </script>
+  </body>
+</html>
+)=====";
+
+char last_vlhkost = 0.0f;
+char last_temp = 0.0f;
+
+ESP8266WebServer server(80);
+
+void handleRoot() {
+ String s = MAIN_page;
+ server.send(200, "text/html", s); 
+}
+
+void handleChannel_0() { 
+  float temp = readTemperature();
+  const String t = String(temp);
+  server.send(200, "text/plane", t);
+
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(500);
+  WiFi.softAP("Smart Ventilation", "12345678");
+
+  IPAddress apip = WiFi.softAPIP();
+  server.on("/", handleRoot);
+  server.on("/readChannel_0", handleChannel_0);
+  
+  server.begin();
+  Serial.println("HTTP server started");
+  Serial.println();
+  Serial.println("HTU21D test");
+  delay(500);
+
+  Wire.begin();
+  Wire.beginTransmission(0x40);
+  Wire.write(0xFE);
+  Wire.endTransmission();
+  Wire.beginTransmission(0x40);
+  Wire.write(0xE7);
+  Wire.endTransmission();
+  Wire.requestFrom(0x40, 1); 
+
+}
+
+void loop() {
+  server.handleClient();
+}
+
+float readTemperature(void){
+  
+    Wire.beginTransmission(0x40);
+    Wire.write(0xE3);
+    Wire.endTransmission();
+
+    delay(50);
+
+    uint8_t count = Wire.requestFrom(0x40, 3);
+    if (count != 3) {
+        return 0.0;
+    }
+    
+    uint16_t t = Wire.read();
+    t <<= 8;
+    t |= Wire.read() & 0b11111100;
+
+    uint8_t crc = Wire.read();
+    (void)crc;
+
+    float temp = t;
+    temp *= 175.72;
+    temp /= 65536.0;
+    temp -= 46.85;
+    last_temp = temp;
+
+    return temp;
+}
