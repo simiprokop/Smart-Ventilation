@@ -1,0 +1,98 @@
+/**
+ * I2C adresy
+ *Trigger Temperature Measurement 0xE3
+ *Trigger Humidity Measurement 0xE5 
+ *Trigger Temperature Measurement 0xF3 
+ *Trigger Humidity Measurement 0xF5
+ *Write user register 0xE6
+ *Read user register 0xE7
+ *Soft Reset 0xFE
+ */
+ 
+#include <Wire.h>
+
+
+char last_vlhkost = 0.0f;
+char last_temp = 0.0f;
+
+void setup() {
+  
+  Serial.begin(115200);
+  Serial.println("HTU21D test");
+  
+  Wire.begin();
+  Wire.beginTransmission(0x40);
+  Wire.write(0xFE);
+  Wire.endTransmission();
+  Wire.beginTransmission(0x40);
+  Wire.write(0xE7);
+  Wire.endTransmission();
+  Wire.requestFrom(0x40, 1); 
+}
+
+void loop() {
+    float temp = readTemperature();
+    float rel_hum = readHumidity();
+    Serial.print("Temp: "); Serial.print(temp); Serial.print(" C");
+    Serial.print("\t\t");
+    Serial.print("Humidity: "); Serial.print(rel_hum); Serial.println(" \%");
+    delay(500);
+}
+
+float readTemperature(void){
+  
+    Wire.beginTransmission(0x40);
+    Wire.write(0xE3);
+    Wire.endTransmission();
+
+    delay(50);
+
+    uint8_t count = Wire.requestFrom(0x40, 3);
+    if (count != 3) {
+        return 0.0;
+    }
+    
+    uint16_t t = Wire.read();
+    t <<= 8;
+    t |= Wire.read() & 0b11111100;
+
+    uint8_t crc = Wire.read();
+    (void)crc;
+
+    float temp = t;
+    temp *= 175.72;
+    temp /= 65536.0;
+    temp -= 46.85;
+    last_temp = temp;
+
+    return temp;
+}
+
+float readHumidity(void) {
+    Wire.beginTransmission(0x40);
+    Wire.write(0xE5);
+    Wire.endTransmission();
+
+    delay(50);
+
+    uint8_t count = Wire.requestFrom(0x40, 3);
+
+    if (count != 3) {
+        return 0.0;
+    }
+    uint16_t h = Wire.read();
+    h <<= 8;
+    h |= Wire.read() & 0b11111100;
+
+    uint8_t crc = Wire.read();
+    (void)crc;
+
+    float hum = h;
+    hum *= 125.0;
+    hum /= 65536.0;
+    hum -= 6.0;
+
+    last_vlhkost = hum;
+
+    return hum;
+}
